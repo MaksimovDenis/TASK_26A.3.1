@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -86,8 +88,10 @@ func main() {
 			for {
 				scanner.Scan()
 				data = scanner.Text()
+				logrus.Info("Считываем входящие данные")
 				if strings.EqualFold(data, "exit") {
 					fmt.Println("Программа завершила работу")
+					logrus.Info("Завершение работы программы")
 					return
 				}
 				i, err := strconv.Atoi(data)
@@ -95,6 +99,7 @@ func main() {
 					fmt.Println("Пожалуйста, введите целое число")
 					continue
 				}
+				logrus.Infof("Запись числа i=%v в канал", i)
 				c <- i
 			}
 		}()
@@ -107,9 +112,11 @@ func main() {
 			for {
 				select {
 				case data := <-c:
+					logrus.Info("Первая стадия: читаем данные из канала и фильтруем положительные значения")
 					if data > 0 {
 						select {
 						case numberStreamFirst <- data:
+							logrus.Info("Записываем данные, полученные на первой стадии в канал")
 						case <-done:
 							return
 						}
@@ -128,9 +135,11 @@ func main() {
 			for {
 				select {
 				case data := <-c:
+					logrus.Info("Вторая стадия: читаем данные из канала и фильтруем значения не равные 0 и кратные 3")
 					if data != 0 && data%3 == 0 {
 						select {
 						case numberStreamSecond <- data:
+							logrus.Info("Записываем данные, полученные на второй стадии в канал")
 						case <-done:
 							return
 						}
@@ -150,6 +159,7 @@ func main() {
 			for {
 				select {
 				case data := <-c:
+					logrus.Infof("Добавление элемента %v в конец буфера", data)
 					buffer.Push(data)
 				case <-done:
 					return
@@ -158,14 +168,18 @@ func main() {
 		}()
 
 		go func() {
+			logrus.Infof("Запускаем вспомогаетльную рутину, выполняющую просмотр буфера с заданным интервалом времени %v", bufferDrainInterval)
 			for {
 				select {
 				case <-time.After(bufferDrainInterval):
+					logrus.Info("Получение всех элементов буфера и его очистка")
 					bufferData := buffer.Get()
 					if bufferData != nil {
+						logrus.Info("Если в буфере что-то есть, то возвращаем данные построчно")
 						for _, data := range bufferData {
 							select {
 							case bufferedIntChan <- data:
+								logrus.Info("Записываем данные в канал буфера")
 							case <-done:
 								return
 							}
@@ -180,6 +194,7 @@ func main() {
 	}
 
 	consumer := func(done <-chan bool, c <-chan int) {
+		logrus.Info("Запускаем потребитель данные от пайплайна")
 		for {
 			select {
 			case data := <-c:
@@ -190,8 +205,10 @@ func main() {
 		}
 	}
 
+	logrus.Info("Запуск программы")
 	source, done := dataSource()
 
+	logrus.Info("Реализуем пайплайн, передаём ему канал done, первую и вторую стадию")
 	pipeline := NewPipelineInt(done, stageFilterFirst, stageFilterSecond, bufferStageInt)
 	consumer(done, pipeline.Run(source))
 
