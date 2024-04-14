@@ -179,7 +179,7 @@ func main() {
 						for _, data := range bufferData {
 							select {
 							case bufferedIntChan <- data:
-								logrus.Info("Записываем данные в канал буфера")
+								logrus.Info("Записываем данные в канал буфер")
 							case <-done:
 								return
 							}
